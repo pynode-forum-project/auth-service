@@ -1,5 +1,6 @@
 # TODO: Add login() and verify_token() functions when implementing FP-13/FP-14
 from flask import Blueprint, request, jsonify
+import bcrypt
 from app.utils.user_service_client import UserServiceClient
 
 auth_bp = Blueprint('auth', __name__)
@@ -9,9 +10,6 @@ def register():
     """
     POST /auth/register
     Register a new user
-    
-    Note: Password will be hashed by user-service before storing in database.
-    Email verification will be handled separately in user profile or other services.
     
     Request Body:
         {
@@ -50,12 +48,15 @@ def register():
         if len(password) < 6:
             return jsonify({'error': 'Password must be at least 6 characters long'}), 400
         
-        # Create user via user-service (password will be hashed by user-service)
+        # Hash password using bcrypt before sending to user-service
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        # Create user via user-service (password is already hashed)
         user_data = UserServiceClient.create_user(
             first_name=first_name,
             last_name=last_name,
             email=email,
-            password=password
+            password=hashed_password
         )
         
         return jsonify({
