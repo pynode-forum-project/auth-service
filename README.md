@@ -110,6 +110,78 @@ def admin_route():
     return jsonify({'message': 'Admin route'})
 ```
 
+## Required User Service APIs
+
+Auth service communicates with the user service for user management. The following internal APIs must be implemented in the user service:
+
+### POST /internal/users
+Create a new user account.
+
+**Request Body:**
+```json
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "user@example.com",
+  "password": "$2b$12$hashed_password_string..."
+}
+```
+
+**Note:** The password is already hashed using bcrypt by auth-service before sending to user-service.
+
+**Response (201 Created):**
+```json
+{
+  "userId": "uuid-string",
+  "firstName": "John",
+  "lastName": "Doe",
+  "email": "user@example.com"
+}
+```
+
+**Response (409 Conflict):**
+```json
+{
+  "error": "User with this email already exists"
+}
+```
+
+### POST /internal/users/verify
+Verify user credentials (email and password).
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+**Note:** The password is sent in plain text. User service should hash it and compare with stored hash.
+
+**Response (200 OK):**
+```json
+{
+  "userId": "uuid-string",
+  "userType": "normal_user",
+  "isActive": true
+}
+```
+
+**Response (401 Unauthorized):**
+```json
+{
+  "error": "Invalid email or password"
+}
+```
+
+**Response (404 Not Found):**
+```json
+{
+  "error": "User not found"
+}
+```
+
 ## Configuration
 
 Environment variables:
