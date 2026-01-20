@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import bcrypt
 from app.utils.user_service_client import UserServiceClient
-from app.utils.jwt_utils import generate_token
+from app.utils.jwt_utils import generate_token, login_required
 from app.utils.exceptions import (
     InvalidCredentialsError,
     UserAlreadyExistsError,
@@ -119,3 +119,25 @@ def login():
         from flask import current_app
         current_app.logger.error(f"Login failed: {str(e)}", exc_info=True)
         raise UserServiceError("Login failed. Please try again later.")
+
+@auth_bp.route('/verify-token', methods=['POST'])
+@login_required
+def verify_token():
+    """
+    Request Headers:
+        Authorization: Bearer <token>
+    
+    Response:
+        {
+            "valid": true,
+            "user_id": "uuid-string",
+            "user_type": "normal_user",
+            "is_active": false
+        }
+    """
+    return jsonify({
+        'valid': True,
+        'user_id': request.current_user_id,
+        'user_type': request.current_user_type,
+        'is_active': request.current_user_is_active
+    }), 200

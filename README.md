@@ -6,6 +6,8 @@ Auth Service is a Flask-based microservice that handles user authentication for 
 
 - **User Registration**: POST `/auth/register` - Register new users
 - **User Login**: POST `/auth/login` - Verify credentials and generate JWT tokens
+- **JWT Token Verification**: POST `/auth/verify-token` - Verify JWT token validity
+- **Route Protection**: Middleware decorators (`@login_required`, `@admin_required`) for protecting routes
 
 ## API Endpoints
 
@@ -57,6 +59,57 @@ Login and receive JWT token.
 - Users with `isActive: false` can login but have limited permissions (can view posts but cannot create posts or replies).
 - JWT token contains `user_id`, `user_type`, and `is_active` for authorization.
 
+### POST /auth/verify-token
+Verify if a JWT token is valid (protected route example).
+
+**Request Headers:**
+```
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "valid": true,
+  "user_id": "uuid-string",
+  "user_type": "normal_user",
+  "is_active": false
+}
+```
+
+## JWT Utilities
+
+The service provides utility functions and decorators for JWT token management:
+
+### Functions
+- `generate_token(user_id, user_type, is_active)`: Generate a JWT token
+- `decode_token(token)`: Decode and verify a JWT token
+- `verify_token(token)`: Verify JWT token and return decoded payload
+- `get_token_from_header()`: Extract JWT token from Authorization header
+
+### Decorators
+- `@login_required`: Protect routes requiring authentication
+  - Attaches `request.current_user_id`, `request.current_user_type`, `request.current_user_is_active` to request object
+- `@admin_required`: Protect routes requiring admin privileges
+  - Requires `user_type` to be 'admin' or 'super_admin'
+
+### Usage Example
+```python
+from app.utils.jwt_utils import login_required, admin_required
+
+@auth_bp.route('/protected')
+@login_required
+def protected_route():
+    user_id = request.current_user_id
+    return jsonify({'user_id': user_id})
+
+@auth_bp.route('/admin-only')
+@login_required
+@admin_required
+def admin_route():
+    return jsonify({'message': 'Admin route'})
+```
+
 ## Configuration
 
 Environment variables:
@@ -75,7 +128,7 @@ Environment variables:
 - Pika 1.3.2 (RabbitMQ client)
 - Python-dotenv 1.0.0
 - bcrypt 4.1.2 (Password hashing)
-- pyjwt 2.8.0 (JWT token generation)
+- pyjwt 2.8.0 (JWT token generation and verification)
 
 ## Running the Service
 
