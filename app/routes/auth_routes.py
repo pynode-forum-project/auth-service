@@ -1,16 +1,19 @@
-# TODO: Add login() and verify_token() functions when implementing FP-13/FP-14
 from flask import Blueprint, request, jsonify
 import bcrypt
 from app.utils.user_service_client import UserServiceClient
+from app.utils.jwt_utils import generate_token
+from app.utils.exceptions import (
+    InvalidCredentialsError,
+    UserAlreadyExistsError,
+    UserServiceError,
+    ValidationError
+)
 
 auth_bp = Blueprint('auth', __name__)
 
 @auth_bp.route('/register', methods=['POST'])
 def register():
     """
-    POST /auth/register
-    Register a new user
-    
     Request Body:
         {
             "firstName": "John",
@@ -29,29 +32,24 @@ def register():
         data = request.get_json()
         
         if not data:
-            return jsonify({'error': 'Request body is required'}), 400
+            raise ValidationError("Request body is required")
         
         first_name = data.get('firstName')
         last_name = data.get('lastName')
         email = data.get('email')
         password = data.get('password')
         
-        # Validate required fields
         if not all([first_name, last_name, email, password]):
-            return jsonify({'error': 'All fields (firstName, lastName, email, password) are required'}), 400
+            raise ValidationError("All fields (firstName, lastName, email, password) are required")
         
-        # Validate email format (basic check)
         if '@' not in email:
-            return jsonify({'error': 'Invalid email format'}), 400
+            raise ValidationError("Invalid email format")
         
-        # Validate password length
         if len(password) < 6:
-            return jsonify({'error': 'Password must be at least 6 characters long'}), 400
+            raise ValidationError("Password must be at least 6 characters long")
         
-        # Hash password using bcrypt before sending to user-service
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
-        # Create user via user-service (password is already hashed)
         user_data = UserServiceClient.create_user(
             first_name=first_name,
             last_name=last_name,
@@ -64,6 +62,60 @@ def register():
             'user_id': user_data['userId']
         }), 201
     
+    except (ValidationError, UserAlreadyExistsError, UserServiceError):
+        raise
     except Exception as e:
-        # Error handlers will catch specific exceptions
-        return jsonify({'error': f'Registration failed: {str(e)}'}), 500
+        from flask import current_app
+        current_app.logger.error(f"Registration failed: {str(e)}", exc_info=True)
+        raise UserServiceError("Registration failed. Please try again later.")
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """
+    Request Body:
+        {
+            "email": "user@example.com",
+            "password": "password123"
+        }
+    
+    Response:
+        {
+            "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "user_id": "uuid-string",
+            "user_type": "normal_user",
+            "isActive": true
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            raise InvalidCredentialsError("Request body is required")
+        
+        email = data.get('email')
+        password = data.get('password')
+        
+        if not email or not password:
+            raise InvalidCredentialsError("Email and password are required")
+        
+        user_data = UserServiceClient.verify_user_credentials(email, password)
+        
+        token = generate_token(
+            user_id=user_data['userId'],
+            user_type=user_data.get('userType', 'normal_user'),
+            is_active=user_data.get('isActive', False)
+        )
+        
+        return jsonify({
+            'token': token,
+            'user_id': user_data['userId'],
+            'user_type': user_data.get('userType', 'normal_user'),
+            'isActive': user_data.get('isActive', False)
+        }), 200
+    
+    except (InvalidCredentialsError, UserServiceError):
+        raise
+    except Exception as e:
+        from flask import current_app
+        current_app.logger.error(f"Login failed: {str(e)}", exc_info=True)
+        raise UserServiceError("Login failed. Please try again later.")

@@ -1,42 +1,19 @@
-# user_service_client.py
-# Client for communicating with user-service
-# TODO: Add verify_user_credentials() and get_user_by_id() methods when implementing FP-13
-# See .backup/user_service_client_login.py.backup for reference
-
 import requests
 from flask import current_app
 from app.utils.exceptions import (
+    InvalidCredentialsError,
     UserNotFoundError,
     UserAlreadyExistsError,
     UserServiceError
 )
 
 class UserServiceClient:
-    """Client for interacting with user-service"""
-    
     @staticmethod
     def _get_base_url():
-        """Get the base URL for user service"""
         return current_app.config['USER_SERVICE_URL']
     
     @staticmethod
     def create_user(first_name, last_name, email, password):
-        """
-        Create a new user via user-service
-        
-        Args:
-            first_name: User's first name
-            last_name: User's last name
-            email: User's email
-            password: User's password
-        
-        Returns:
-            dict: Created user data
-        
-        Raises:
-            UserAlreadyExistsError: If user with email already exists
-            UserServiceError: If communication with user-service fails
-        """
         try:
             url = f"{UserServiceClient._get_base_url()}/internal/users"
             response = requests.post(
@@ -57,5 +34,29 @@ class UserServiceClient:
             else:
                 raise UserServiceError(f"User service returned status {response.status_code}")
         
+        except requests.exceptions.RequestException as e:
+            raise UserServiceError(f"Failed to communicate with user service: {str(e)}")
+    
+    @staticmethod
+    def verify_user_credentials(email, password):
+        try:
+            url = f"{UserServiceClient._get_base_url()}/internal/users/verify"
+            response = requests.post(
+                url,
+                json={'email': email, 'password': password},
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 401:
+                raise InvalidCredentialsError("Invalid email or password")
+            elif response.status_code == 404:
+                raise UserNotFoundError("User not found")
+            else:
+                raise UserServiceError(f"User service returned status {response.status_code}")
+        
+        except (InvalidCredentialsError, UserNotFoundError, UserServiceError):
+            raise
         except requests.exceptions.RequestException as e:
             raise UserServiceError(f"Failed to communicate with user service: {str(e)}")
