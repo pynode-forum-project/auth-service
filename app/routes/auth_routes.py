@@ -1,5 +1,4 @@
 from flask import Blueprint, request, jsonify
-import bcrypt
 from app.utils.user_service_client import UserServiceClient
 from app.utils.jwt_utils import generate_token, login_required
 from app.utils.exceptions import (
@@ -45,16 +44,14 @@ def register():
         if '@' not in email:
             raise ValidationError("Invalid email format")
         
-        if len(password) < 6:
-            raise ValidationError("Password must be at least 6 characters long")
-        
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        if len(password) < 8:
+            raise ValidationError("Password must be at least 8 characters long")
         
         user_data = UserServiceClient.create_user(
             first_name=first_name,
             last_name=last_name,
             email=email,
-            password=hashed_password
+            password=password
         )
         
         return jsonify({
@@ -82,8 +79,7 @@ def login():
         {
             "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
             "user_id": "uuid-string",
-            "user_type": "normal_user",
-            "isActive": true
+            "user_type": "normal_user"
         }
     """
     try:
@@ -102,15 +98,13 @@ def login():
         
         token = generate_token(
             user_id=user_data['userId'],
-            user_type=user_data.get('userType', 'normal_user'),
-            is_active=user_data.get('isActive', False)
+            user_type=user_data.get('userType', 'normal_user')
         )
         
         return jsonify({
             'token': token,
             'user_id': user_data['userId'],
-            'user_type': user_data.get('userType', 'normal_user'),
-            'isActive': user_data.get('isActive', False)
+            'user_type': user_data.get('userType', 'normal_user')
         }), 200
     
     except (InvalidCredentialsError, UserServiceError):
@@ -131,13 +125,11 @@ def verify_token():
         {
             "valid": true,
             "user_id": "uuid-string",
-            "user_type": "normal_user",
-            "is_active": false
+            "user_type": "normal_user"
         }
     """
     return jsonify({
         'valid': True,
         'user_id': request.current_user_id,
-        'user_type': request.current_user_type,
-        'is_active': request.current_user_is_active
+        'user_type': request.current_user_type
     }), 200
