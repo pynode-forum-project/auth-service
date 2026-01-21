@@ -9,7 +9,7 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     JWT_ALGORITHM = 'HS256'
     
-    USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service:5000')
+    USER_SERVICE_URL = os.getenv('USER_SERVICE_URL', 'http://user-service:5001')
     
     RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', 'rabbitmq')
     RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', '5672'))
