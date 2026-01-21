@@ -4,6 +4,7 @@ from app.utils.jwt_utils import generate_token, login_required
 from app.utils.exceptions import (
     InvalidCredentialsError,
     UserAlreadyExistsError,
+    UserNotFoundError,
     UserServiceError,
     ValidationError
 )
@@ -107,7 +108,7 @@ def login():
             'user_type': user_data.get('userType', 'normal_user')
         }), 200
     
-    except (InvalidCredentialsError, UserServiceError):
+    except (InvalidCredentialsError, UserNotFoundError, UserServiceError):
         raise
     except Exception as e:
         from flask import current_app
