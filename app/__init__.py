@@ -1,19 +1,26 @@
-# __init__.py
-# Flask application factory
-
 from flask import Flask
-from config import Config
-from app.utils.error_handler import register_error_handlers
+from flask_cors import CORS
+from app.routes import auth_bp
+from app.utils.error_handlers import register_error_handlers
 
 def create_app():
     app = Flask(__name__)
-    app.config.from_object(Config)
+    
+    # Load configuration
+    app.config.from_object('app.config.Config')
+    
+    # Enable CORS
+    CORS(app, resources={r"/*": {"origins": "*"}})
+    
+    # Register blueprints
+    app.register_blueprint(auth_bp)
     
     # Register error handlers
     register_error_handlers(app)
     
-    # Register blueprints
-    from app.routes.auth_routes import auth_bp
-    app.register_blueprint(auth_bp, url_prefix='/auth')
+    # Health check endpoint
+    @app.route('/health')
+    def health():
+        return {'status': 'healthy', 'service': 'auth-service'}
     
     return app
