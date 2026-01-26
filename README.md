@@ -1,228 +1,293 @@
 # Auth Service
 
-Auth Service is a Flask-based microservice that handles user authentication for the Forum Project.
+The Auth Service is a microservice responsible for user authentication, registration, email verification, and JWT token management.
 
 ## Features
 
-- **User Registration**: POST `/auth/register` - Register new users
-- **User Login**: POST `/auth/login` - Verify credentials and generate JWT tokens
-- **JWT Token Verification**: POST `/auth/verify-token` - Verify JWT token validity
-- **Route Protection**: Middleware decorators (`@login_required`, `@admin_required`) for protecting routes
+- **User Login**: Authentication via email and password with JWT token issuance
+- **User Registration**: New user registration and email verification token delivery
+- **Email Verification**: Email verification via 6-digit verification code
+- **Token Refresh**: JWT token refresh functionality
+- **Password Encryption**: Secure password hashing using bcrypt
+- **Input Validation**: Validation of input data including email, password, and names
+
+## Tech Stack
+
+- **Framework**: Flask 3.0.0
+- **Authentication**: PyJWT 2.8.0
+- **Password Hashing**: bcrypt 4.1.2
+- **Message Queue**: pika 1.3.2 (RabbitMQ)
+- **HTTP Client**: requests 2.31.0
+- **CORS**: Flask-Cors 4.0.0
+
+## Project Structure
+
+```
+auth-service/
+├── app/
+│   ├── __init__.py          # Flask app initialization
+│   ├── config.py            # Configuration management
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   └── auth_routes.py   # Authentication API endpoints
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── auth_service.py  # Authentication business logic
+│   │   ├── user_client.py   # User Service HTTP client
+│   │   └── message_queue.py # RabbitMQ message queue client
+│   └── utils/
+│       ├── __init__.py
+│       ├── validators.py     # Input validation utilities
+│       ├── decorators.py     # Decorators (exception handling, etc.)
+│       └── error_handlers.py # Error handlers
+├── Dockerfile               # Docker image build file
+├── requirements.txt         # Python dependencies
+├── run.py                   # Application entry point
+└── README.md                # Project documentation
+```
+
+## Environment Variables
+
+Create a `.env` file and set the following environment variables:
+
+```env
+# Flask settings
+SECRET_KEY=your-secret-key-here
+FLASK_ENV=development
+
+# JWT settings
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRATION_HOURS=24
+
+# Service URLs
+USER_SERVICE_URL=http://localhost:5001
+
+# RabbitMQ settings
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+
+# Email verification token settings
+VERIFICATION_TOKEN_HOURS=3
+```
+
+## Installation and Running
+
+### Local Development
+
+1. **Install Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Set Environment Variables**
+   Create a `.env` file and configure the required environment variables.
+
+3. **Run the Application**
+   ```bash
+   python run.py
+   ```
+   
+   The service runs on `http://localhost:5000` by default.
+
+### Using Docker
+
+1. **Build Docker Image**
+   ```bash
+   docker build -t auth-service .
+   ```
+
+2. **Run Container**
+   ```bash
+   docker run -p 5000:5000 --env-file .env auth-service
+   ```
 
 ## API Endpoints
 
-### POST /auth/register
-Register a new user account.
+### 1. User Login
+**POST** `/login`
 
-**Request Body:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "email": "user@example.com",
-  "password": "password123"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "Registration successful",
-  "user_id": "uuid-string"
-}
-```
-
-### POST /auth/login
-Login and receive JWT token.
-
-**Request Body:**
+Request Body:
 ```json
 {
   "email": "user@example.com",
-  "password": "password123"
+  "password": "Password123!"
 }
 ```
 
-**Response:**
+Success Response (200):
 ```json
 {
+  "message": "Login successful",
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user_id": "uuid-string",
-  "user_type": "normal_user",
-  "isActive": false
+  "user": {
+    "userId": 1,
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "type": "user",
+    "active": true,
+    "profileImageUrl": null
+  }
 }
 ```
 
-**Note:** 
-- Password is hashed using bcrypt before storing in database.
-- Email verification is handled separately in user profile or other services.
-- Users with `isActive: false` can login but have limited permissions (can view posts but cannot create posts or replies).
-- JWT token contains `user_id`, `user_type`, and `is_active` for authorization.
+### 2. User Registration
+**POST** `/register`
 
-### POST /auth/verify-token
-Verify if a JWT token is valid (protected route example).
-
-**Request Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-  "valid": true,
-  "user_id": "uuid-string",
-  "user_type": "normal_user",
-  "is_active": false
-}
-```
-
-## JWT Utilities
-
-The service provides utility functions and decorators for JWT token management:
-
-### Functions
-- `generate_token(user_id, user_type, is_active)`: Generate a JWT token
-- `decode_token(token)`: Decode and verify a JWT token
-- `verify_token(token)`: Verify JWT token and return decoded payload
-- `get_token_from_header()`: Extract JWT token from Authorization header
-
-### Decorators
-- `@login_required`: Protect routes requiring authentication
-  - Attaches `request.current_user_id`, `request.current_user_type`, `request.current_user_is_active` to request object
-- `@admin_required`: Protect routes requiring admin privileges
-  - Requires `user_type` to be 'admin' or 'super_admin'
-
-### Usage Example
-```python
-from app.utils.jwt_utils import login_required, admin_required
-
-@auth_bp.route('/protected')
-@login_required
-def protected_route():
-    user_id = request.current_user_id
-    return jsonify({'user_id': user_id})
-
-@auth_bp.route('/admin-only')
-@login_required
-@admin_required
-def admin_route():
-    return jsonify({'message': 'Admin route'})
-```
-
-## Required User Service APIs
-
-Auth service communicates with the user service for user management. The following internal APIs must be implemented in the user service:
-
-### POST /internal/users
-Create a new user account.
-
-**Request Body:**
+Request Body:
 ```json
 {
   "firstName": "John",
   "lastName": "Doe",
   "email": "user@example.com",
-  "password": "$2b$12$hashed_password_string..."
+  "password": "Password123!"
 }
 ```
 
-**Note:** The password is already hashed using bcrypt by auth-service before sending to user-service.
-
-**Response (201 Created):**
+Success Response (201):
 ```json
 {
-  "userId": "uuid-string",
-  "firstName": "John",
-  "lastName": "Doe",
+  "message": "Registration successful. Please check your email to verify your account.",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "userId": 1,
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "type": "user"
+  }
+}
+```
+
+### 3. Email Verification
+**POST** `/verify-email`
+
+Request Body:
+```json
+{
+  "email": "user@example.com",
+  "token": "123456"
+}
+```
+
+Success Response (200):
+```json
+{
+  "message": "Email verified successfully",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "userId": 1,
+    "email": "user@example.com",
+    "firstName": "John",
+    "lastName": "Doe",
+    "type": "user",
+    "active": true,
+    "profileImageUrl": null
+  }
+}
+```
+
+### 4. Resend Verification Email
+**POST** `/resend-verification`
+
+Request Body:
+```json
+{
   "email": "user@example.com"
 }
 ```
 
-**Response (409 Conflict):**
+Success Response (200):
 ```json
 {
-  "error": "User with this email already exists"
+  "message": "Verification email sent"
 }
 ```
 
-### POST /internal/users/verify
-Verify user credentials (email and password).
+### 5. Refresh Token
+**POST** `/refresh-token`
 
-**Request Body:**
+Request Headers:
+```
+Authorization: Bearer <token>
+```
+
+Success Response (200):
 ```json
 {
-  "email": "user@example.com",
-  "password": "password123"
+  "message": "Token refreshed",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
 
-**Note:** The password is sent in plain text. User service should hash it and compare with stored hash.
+### 6. Health Check
+**GET** `/health`
 
-**Response (200 OK):**
+Response:
 ```json
 {
-  "userId": "uuid-string",
-  "userType": "normal_user",
-  "isActive": true
+  "status": "healthy",
+  "service": "auth-service"
 }
 ```
 
-**Response (401 Unauthorized):**
-```json
-{
-  "error": "Invalid email or password"
-}
-```
+## Password Requirements
 
-**Response (404 Not Found):**
-```json
-{
-  "error": "User not found"
-}
-```
+Passwords must meet the following criteria:
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one digit
+- At least one special character (`!@#$%^&*(),.?":{}|<>`)
 
-## Configuration
+## External Service Integration
 
-Environment variables:
-- `JWT_SECRET_KEY`: Secret key for JWT token signing (required, no default)
-- `USER_SERVICE_URL`: URL of the user-service (default: 'http://user-service:5000')
-- `RABBITMQ_HOST`: RabbitMQ host (default: 'rabbitmq')
-- `RABBITMQ_PORT`: RabbitMQ port (default: '5672')
-- `RABBITMQ_USER`: RabbitMQ username (default: 'guest')
-- `RABBITMQ_PASSWORD`: RabbitMQ password (default: 'guest')
-- `EMAIL_QUEUE`: Email queue name (default: 'email_queue')
+### User Service
+- User information retrieval and creation
+- Email verification token management
+- User status updates
 
-## Dependencies
+### Email Service (RabbitMQ)
+- Email verification code delivery
+- Notification email delivery
 
-- Flask 3.0.0
-- Requests 2.31.0
-- Pika 1.3.2 (RabbitMQ client)
-- Python-dotenv 1.0.0
-- bcrypt 4.1.2 (Password hashing)
-- pyjwt 2.8.0 (JWT token generation and verification)
+Required Queues:
+- `email.verification`: Email verification messages
+- `email.notification`: Notification messages
 
-## Running the Service
+## Error Handling
 
+The service handles the following errors:
+- **400**: Bad Request (validation failures, etc.)
+- **401**: Unauthorized (invalid email/password, invalid token)
+- **403**: Forbidden (account deactivated)
+- **404**: Not Found
+- **409**: Conflict (email already exists, etc.)
+- **500**: Internal Server Error
+
+## Security Considerations
+
+1. **JWT Tokens**: Signed using HS256 algorithm
+2. **Password Hashing**: Secure hashing using bcrypt (12 rounds)
+3. **Environment Variables**: Sensitive information managed via environment variables
+4. **CORS**: Recommended to allow only specific origins in production environment
+
+## Development Guide
+
+### Code Structure
+- **routes/**: API endpoint definitions
+- **services/**: Business logic and external service integration
+- **utils/**: Utility functions (validation, error handling, etc.)
+
+### Logging
+The application uses Python's `logging` module to record logs.
+
+### Testing
+To run tests:
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set required environment variables
-export JWT_SECRET_KEY=your-secret-key-here
-
-# Run the service
-python run.py
+# If test files exist
+pytest
 ```
 
-The service will run on `http://localhost:5000` by default.
+## License
 
-## Docker
-
-```bash
-# Build the image
-docker build -t auth-service .
-
-# Run the container
-docker run -p 5000:5000 -e JWT_SECRET_KEY=your-secret-key-here auth-service
-```
+Refer to the `LICENSE` file for license information.
