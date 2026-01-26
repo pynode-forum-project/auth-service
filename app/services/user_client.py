@@ -31,6 +31,26 @@ class UserClient:
         except requests.exceptions.RequestException as e:
             logger.error(f'Request to user service failed: {str(e)}')
             return None
+
+    def get_user_by_pending_email(self, email: str) -> dict:
+        """Get user by pending email address"""
+        try:
+            response = requests.get(
+                f'{self.base_url}/internal/users/pending-email/{email}',
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            elif response.status_code == 404:
+                return None
+            else:
+                logger.error(f'Error getting user by pending email: {response.text}')
+                return None
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f'Request to user service failed: {str(e)}')
+            return None
     
     def get_user_by_id(self, user_id: int) -> dict:
         """Get user by ID"""

@@ -49,6 +49,7 @@ def login():
             'email': user.get('email'),
             'firstName': user.get('first_name'),
             'lastName': user.get('last_name'),
+            'pendingEmail': user.get('pending_email'),
             'type': user.get('type'),
             'active': user.get('active', True),
             'profileImageUrl': user.get('profile_image_url')
@@ -69,7 +70,10 @@ def register():
     
     # Check if email already exists
     existing_user = user_client.get_user_by_email(data.get('email'))
+    pending_user = user_client.get_user_by_pending_email(data.get('email'))
     if existing_user:
+        return jsonify({'error': 'Email already registered'}), 409
+    if pending_user:
         return jsonify({'error': 'Email already registered'}), 409
     
     # Hash password
@@ -111,6 +115,7 @@ def register():
             'email': new_user.get('email'),
             'firstName': new_user.get('first_name'),
             'lastName': new_user.get('last_name'),
+            'pendingEmail': new_user.get('pending_email'),
             'type': new_user.get('type')
         }
     }), 201
@@ -161,6 +166,7 @@ def verify_email():
             'email': updated_user_data.get('email'),
             'firstName': updated_user_data.get('firstName'),
             'lastName': updated_user_data.get('lastName'),
+            'pendingEmail': updated_user_data.get('pendingEmail'),
             'type': updated_user_data.get('type'),
             'active': updated_user_data.get('active', True),
             'profileImageUrl': updated_user_data.get('profileImageUrl')
@@ -183,12 +189,18 @@ def resend_verification():
     # Get user
     user = user_client.get_user_by_email(email)
     if not user:
+        user = user_client.get_user_by_pending_email(email)
+    if not user:
         return jsonify({'error': 'User not found'}), 404
     
     # Allow resending verification even if email was previously verified but is now unverified (after email update)
     # Only block if email is currently verified
-    if user.get('email_verified'):
+    if user.get('email_verified') and not user.get('pending_email'):
         return jsonify({'error': 'Email is already verified'}), 400
+
+    pending_email = user.get('pending_email')
+    if pending_email and email != pending_email:
+        return jsonify({'error': 'Pending email verification required'}), 400
     
     # Check if user has a valid verification token (Token Reusability)
     user_id = user.get('user_id')
@@ -210,8 +222,9 @@ def resend_verification():
         )
     
     # Send verification email with the token (either reused or new)
+    target_email = pending_email or user.get('email')
     message_queue.send_verification_email(
-        email=email,
+        email=target_email,
         first_name=user.get('first_name'),
         token=verification_token
     )
